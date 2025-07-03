@@ -1,106 +1,60 @@
 'use strict';
 
 const cluster = require('cluster');
+const workers = require('./utils/workers');
+
 const SYMBOL = Symbol('listeners');
 
+function setupClusterSuite(suite) {
+	suite.add(
+		'collect',
+		async (client, registry) => {
+			await startWorkers(2);
+			await registry.clusterMetrics();
+		},
+		{ setup, teardown },
+	);
+}
+
+async function setup(client) {
+	// This is a workaround for benchmark-regression having two copies
+	// of prom-client loaded, both listening on 'message' from child processes
+	for (const listener of cluster.listeners('message')) {
+		cluster.removeListener('message', listener);
+	}
+
+	// This allows for multiple tests in the suite to toggle between versions
+	if (client[SYMBOL]) {
+		for (const listener of client[SYMBOL]) {
+			cluster.addListener('message', listener);
+		}
+	}
+
+	const aggregator = new client.AggregatorRegistry();
+
+	client[SYMBOL] = cluster.listeners('message');
+
+	return aggregator;
+}
+
+let workerPromise;
+
+// This is an unfortunate effect of benchmark-regressions not
+// relying on Benchmark.js's lifecycle mechanisms, so we don't
+// know the correct code to run in the worker until 'started' is
+// emitted - and what cost by far the most effort in writing these
+// benchmarks
 async function startWorkers() {
-	const children = [
-		cluster.fork(),
-		cluster.fork(),
-		cluster.fork(),
-		cluster.fork(),
-	];
+	if (!workerPromise) {
+		workerPromise = workers.startWorkers(2);
+	}
 
-	const startup = children.map(
-		worker =>
-			new Promise(resolve =>
-				worker.on('online', () => {
-					console.log(`Worker ${worker.id} started.`);
-
-					resolve(worker);
-				}),
-			),
-	);
-
-	return Promise.all(startup);
+	return workerPromise;
 }
 
-function stopWorkers() {
-	if (cluster.workers) {
-		for (const worker of Object.values(cluster.workers)) {
-			worker.kill();
-		}
-	}
+async function teardown() {
+	workerPromise = undefined;
+	await workers.stopWorkers();
 }
 
-if (cluster.isPrimary) {
-	module.exports = setupClusterSuite;
-
-	function setupClusterSuite(suite) {
-		suite.add(
-			'collect',
-			async (client, registry) => {
-				await registry.clusterMetrics();
-			},
-			{ setup, teardown: stopWorkers },
-		);
-	}
-
-	async function setup(client) {
-		await startWorkers();
-
-		for (const listener of cluster.listeners('message')) {
-			cluster.removeListener('message', listener);
-		}
-
-		if (client[SYMBOL]) {
-			for (const listener of client[SYMBOL]) {
-				cluster.addListener('message', listener);
-			}
-		}
-
-		const aggregator = new client.AggregatorRegistry();
-
-		client[SYMBOL] = cluster.listeners('message');
-
-		return aggregator;
-	}
-} else {
-	//TODO: This is running Counter@current regardless of the run
-	const { Counter, AggregatorRegistry, collectDefaultMetrics } = require('../');
-	const { getLabelCombinations } = require('./utils/labels');
-
-	new AggregatorRegistry();
-
-	collectDefaultMetrics({
-		gcDurationBuckets: [0.001, 0.01, 0.1, 1, 2, 5], // These are the default buckets.
-	});
-
-	module.exports = () => {};
-
-	const labelNames =
-		'single letter labels make poor approximations of real label interpolation behavior for real metrics'.split(
-			' ',
-		);
-
-	const counter = new Counter({
-		name: 'Counter',
-		help: 'Counter',
-		labelNames,
-	});
-
-	const combinations = getLabelCombinations(
-		[3, 5, 2, 4, 8, 7, 1, 3],
-		labelNames,
-	);
-
-	function incrementCounters() {
-		for (const labels of combinations) {
-			counter.inc(labels, 1);
-		}
-	}
-
-	incrementCounters();
-
-	setInterval(incrementCounters, 25);
-}
+module.exports = setupClusterSuite;

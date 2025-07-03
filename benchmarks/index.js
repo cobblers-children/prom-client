@@ -2,6 +2,11 @@
 
 const createRegressionBenchmark = require('@clevernature/benchmark-regression');
 const { Benchmark } = require('benchmark');
+const workers = require('./utils/workers');
+const cluster = require('cluster');
+const debug = require('debug')(
+	cluster.isPrimary ? 'benchmark' : `benchmark:worker-${cluster.worker.id}`,
+);
 
 /**
  * Async suite workaround. benchmark-regression forwards no options to
@@ -14,9 +19,16 @@ const { Benchmark } = require('benchmark');
 
 Benchmark.options.defer = true;
 Benchmark.options.onStart = event => {
-	const original = event.target.fn;
+	const benchmark = event.target;
+	const name = benchmark.name;
+	const version = name.split('➭').at(-1).trim();
+	const original = benchmark.fn;
 
-	event.target.fn = async deferred => {
+	debug(`Starting '${name}'`);
+
+	workers.version = version;
+
+	benchmark.fn = async deferred => {
 		try {
 			await original();
 		} catch (e) {
@@ -26,20 +38,41 @@ Benchmark.options.onStart = event => {
 		}
 	};
 };
+Benchmark.options.onReset = event => {
+	debug(`reset for ${event}`);
+};
+Benchmark.options.onAbort = event => {
+	console.error(event);
+};
+Benchmark.options.onError = event => {
+	console.error(event);
+};
 
 const currentClient = require('..');
-const benchmarks = createRegressionBenchmark(currentClient, [
-	'prom-client@latest',
-]);
+const benchmarks = createRegressionBenchmark(
+	{ name: 'prom-client@current', module: currentClient },
+	['prom-client@latest'],
+);
 
-benchmarks.suite('counter', require('./counter'));
-benchmarks.suite('gauge', require('./gauge'));
-benchmarks.suite('histogram', require('./histogram'));
-benchmarks.suite('registry', require('./registry'));
-benchmarks.suite('summary', require('./summary'));
-benchmarks.suite('cluster', require('./cluster'));
-benchmarks.run().catch(err => {
-	console.error(err.stack);
-	// eslint-disable-next-line n/no-process-exit
-	process.exit(1);
-});
+if (cluster.isWorker) {
+	benchmarks.suite('cluster', require('./clusterWorker'));
+} else {
+	benchmarks.suite('counter', require('./counter'));
+	benchmarks.suite('gauge', require('./gauge'));
+	benchmarks.suite('histogram', require('./histogram'));
+	benchmarks.suite('registry', require('./registry'));
+	benchmarks.suite('summary', require('./summary'));
+	benchmarks.suite('cluster', require('./cluster'));
+}
+
+benchmarks
+	.run()
+	.then(() => {
+		debug('Process end');
+	})
+	.catch(err => {
+		console.error('Failure', err);
+		console.error(err.stack);
+		// eslint-disable-next-line n/no-process-exit
+		process.exit(1);
+	});

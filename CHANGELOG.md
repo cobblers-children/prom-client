@@ -23,6 +23,7 @@ project adheres to [Semantic Versioning](http://semver.org/).
 - perf: Sped up Map accesses
 - perf: Remove truthy conditionals in hot code paths
 - Show the invalid name in the validation errors
+- perf: Improve performance of registry defaultLabels during metric processing
 
 ### Added
 

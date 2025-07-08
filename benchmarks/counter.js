@@ -1,6 +1,7 @@
 'use strict';
 
 const { getLabelNames, labelCombinationFactory } = require('./utils/labels');
+const client = require('../index');
 
 module.exports = setupCounterSuite;
 
@@ -9,14 +10,20 @@ let count = 1;
 function setupCounterSuite(suite) {
 	suite.add(
 		'new',
-		(client, labelNames) =>
+		(client, { labelNames, registry }) =>
 			new client.Counter({
 				name: `Counter${count++}`,
 				help: 'Counter',
 				labelNames,
+				registers: [registry],
 			}),
 		{
-			setup: () => getLabelNames(4),
+			setup: () => {
+				return {
+					labelNames: getLabelNames(4),
+					registry: new client.Registry(),
+				};
+			},
 		},
 	);
 	suite.add(

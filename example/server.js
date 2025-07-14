@@ -1,5 +1,6 @@
 'use strict';
 
+const os = require('os');
 const express = require('express');
 const cluster = require('cluster');
 const { isMainThread, threadId } = require('node:worker_threads');
@@ -69,17 +70,31 @@ setInterval(() => {
 	g.labels('post', '300').inc();
 }, 100);
 
+const defaultLabels = {
+	host: os.hostname().split('.')[0],
+};
+
+if (process.env.INSTANCE_ID) {
+	defaultLabels.instance_id = process.env.INSTANCE_ID;
+}
+
 if (cluster.isWorker) {
+	defaultLabels.cluster_worker = cluster.worker.id;
+
 	// Expose some worker-specific metric as an example
 	setInterval(() => {
 		c.inc({ code: `worker_${cluster.worker.id}` });
 	}, 2000);
 } else if (!isMainThread) {
+	defaultLabels.worker = threadId;
+
 	// Expose some worker-specific metric as an example
 	setInterval(() => {
 		c.inc({ code: `worker_${threadId}` });
 	}, 2000);
 }
+
+register.setDefaultLabels(defaultLabels);
 
 const t = [];
 setInterval(() => {

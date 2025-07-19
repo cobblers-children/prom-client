@@ -3,6 +3,8 @@
 module.exports = setupUtilSuite;
 
 function setupUtilSuite(suite) {
+	const skip = ['prom-client@latest', 'prom-client@trunk'];
+
 	suite.add(
 		'hashObject',
 		(client, Util) => {
@@ -19,7 +21,7 @@ function setupUtilSuite(suite) {
 				phase: 'load',
 			});
 		},
-		{ setup: findUtil },
+		{ setup: findUtil, skip },
 	);
 
 	suite.add(
@@ -39,7 +41,7 @@ function setupUtilSuite(suite) {
 				label1: 4,
 			});
 		},
-		{ setup },
+		{ setup, skip },
 	);
 
 	suite.add(
@@ -59,7 +61,7 @@ function setupUtilSuite(suite) {
 				label1: 4,
 			});
 		},
-		{ setup },
+		{ setup, skip },
 	);
 
 	suite.add(

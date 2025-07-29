@@ -1,5 +1,7 @@
 'use strict';
 
+const Path = require('path');
+
 module.exports = setupUtilSuite;
 
 function setupUtilSuite(suite) {
@@ -8,10 +10,6 @@ function setupUtilSuite(suite) {
 	suite.add(
 		'hashObject',
 		(client, Util) => {
-			if (Util === undefined) {
-				return;
-			}
-
 			Util.hashObject({
 				foo: 'longish',
 				user_agent: 'Chrome',
@@ -27,10 +25,6 @@ function setupUtilSuite(suite) {
 	suite.add(
 		'LabelMap.validate()',
 		(client, labelMap) => {
-			if (labelMap === undefined) {
-				return;
-			}
-
 			labelMap.validate({
 				foo: 'longish',
 				user_agent: 'Chrome',
@@ -47,10 +41,6 @@ function setupUtilSuite(suite) {
 	suite.add(
 		'LabelMap.keyFrom()',
 		(client, labelMap) => {
-			if (labelMap === undefined) {
-				return;
-			}
-
 			labelMap.keyFrom({
 				foo: 'longish',
 				user_agent: 'Chrome',
@@ -67,10 +57,6 @@ function setupUtilSuite(suite) {
 	suite.add(
 		'LabelGrouper.keyFrom()',
 		(client, labelGrouper) => {
-			if (labelGrouper === undefined) {
-				return;
-			}
-
 			labelGrouper.keyFrom({
 				foo: 'longish',
 				user_agent: 'Chrome',
@@ -82,35 +68,31 @@ function setupUtilSuite(suite) {
 			});
 		},
 		{
-			setup: client => {
-				const Util = findUtil(client);
+			setup: (client, location) => {
+				const { LabelGrouper } = findUtil(client, location);
 
-				return Util && new Util.LabelGrouper();
+				return new LabelGrouper();
 			},
+			skip,
 		},
 	);
 }
 
-function setup(client) {
-	const Util = findUtil(client);
+function setup(client, location) {
+	const { LabelMap } = findUtil(client, location);
 
-	if (Util !== undefined) {
-		return new Util.LabelMap([
-			'foo',
-			'user_agent',
-			'gateway',
-			'method',
-			'status_code',
-			'phase',
-			'label1',
-		]);
-	}
+	return new LabelMap([
+		'foo',
+		'user_agent',
+		'gateway',
+		'method',
+		'status_code',
+		'phase',
+		'label1',
+	]);
 }
 
-function findUtil(client) {
-	for (const key of Object.getOwnPropertySymbols(client)) {
-		if (key.toString() === 'Symbol(util)') {
-			return client[key];
-		}
-	}
+function findUtil(client, location) {
+	const Util = require(Path.join(location, 'lib/util.js'));
+	return Util;
 }
